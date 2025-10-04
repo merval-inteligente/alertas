@@ -1,6 +1,6 @@
 # 🚨 API de Alertas - Noticias y Tweets
 
-Sistema FastAPI que analiza noticias y tweets desde MongoDB, generando alertas automáticas basadas en palabras clave, sentimiento y viralidad.
+Sistema FastAPI que analiza noticias y tweets desde MongoDB, generando alertas automáticas inteligentes basadas en **scoring de relevancia**, palabras clave contextuales, y detección de patrones financieros.
 
 ---
 
@@ -13,6 +13,7 @@ Sistema FastAPI que analiza noticias y tweets desde MongoDB, generando alertas a
 - [Endpoints](#-endpoints)
 - [Modelos de Datos](#-modelos-de-datos)
 - [Tipos de Alertas](#-tipos-de-alertas)
+- [Sistema de Scoring](#-sistema-de-scoring)
 - [Ejemplos de Uso](#-ejemplos-de-uso)
 - [Personalización](#-personalización)
 
@@ -23,14 +24,17 @@ Sistema FastAPI que analiza noticias y tweets desde MongoDB, generando alertas a
 - 🔌 Conexión a MongoDB Atlas (Motor async)
 - 📰 Análisis de noticias (colección `news`)
 - 🐦 Análisis de tweets (colección `tweets`)
-- 🔍 Generación automática de alertas basada en reglas
-- 📊 Detección de tickers financieros (`$AAPL`, `YPF`, etc.)
-- 🔥 Identificación de contenido viral
+- 🎯 **Sistema de scoring inteligente** para relevancia
+- 📊 Detección prioritaria de tickers argentinos (`YPF`, `GGAL`, `PAMP`, etc.)
+- 🧠 Análisis contextual (palabras de magnitud, porcentajes, montos)
+- ⏰ Filtros temporales (últimas 24h noticias, 12h tweets)
+- 🕐 Ajuste de sensibilidad según horario de mercado
+- 🔥 Identificación de contenido viral con engagement
 - 💾 Almacenamiento en MongoDB (colección `alerts`)
 - 🎯 Sistema de prioridades (low, medium, high, critical)
 - 🌐 API REST completa con FastAPI
 
-> **Nota:** Este sistema usa **análisis basado en reglas** (palabras clave + umbrales), no Machine Learning.
+> **Nota:** Este sistema usa **análisis basado en reglas mejorado** con scoring contextual y umbrales dinámicos, no Machine Learning.
 
 ---
 
@@ -192,6 +196,78 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 | `high` | Movimientos importantes | Caídas, alertas sociales |
 | `medium` | Análisis, tendencias | Volatilidad, tickers virales |
 | `low` | Informativo, positivo | Noticias generales, ganancias |
+
+---
+
+## 🧠 Sistema de Scoring
+
+El sistema evalúa la relevancia de cada noticia/tweet mediante un **score de 0.0 a 2.0+**:
+
+### Componentes del Score
+
+1. **Peso Base de Keyword** (0.5 - 1.0)
+   - `critical`: 1.0 (crisis, default, colapso)
+   - `high`: 0.8 (caída, alza, volatilidad)
+   - `medium`: 0.6 (análisis, proyección)
+   - `positive`: 0.5 (ganancia, récord)
+
+2. **Contexto** (+0.2 - +0.5)
+   - Palabras de refuerzo cerca de la keyword
+   - Ejemplo: "caída **fuerte**" → +0.3
+
+3. **Magnitud** (×1.2 - ×1.5)
+   - Palabras como "fuerte", "histórico", "récord"
+   - Multiplican el score base
+
+4. **Porcentajes Detectados** (+0.1 - +0.3)
+   - Presencia de % específicos aumenta relevancia
+
+5. **Engagement (Tweets)** (×1.2 - ×1.5)
+   - >100 engagement: ×1.2
+   - >500 engagement: ×1.5
+
+### Umbrales de Creación
+
+Las alertas se crean cuando **score ≥ threshold**:
+
+| Prioridad | Threshold Normal | Durante Mercado |
+|-----------|-----------------|-----------------|
+| `critical` | 0.8 | 0.64 (-20%) |
+| `high` | 0.6 | 0.48 (-20%) |
+| `medium` | 0.5 | 0.40 (-20%) |
+| `positive` | 0.7 | 0.56 (-20%) |
+
+> **Horario de mercado argentino:** Lunes a Viernes, 11:00-17:00 ART
+
+### Ejemplo de Cálculo
+
+**Noticia:** "YPF sufre caída fuerte del 8% por default de Argentina"
+
+```python
+# 1. Keyword "caída" (high) → peso base: 0.8
+# 2. Contexto "fuerte" → +0.3
+# 3. Magnitud "fuerte" → ×1.3
+# 4. Porcentaje "8%" → +0.2
+# 5. Score final: (0.8 + 0.3) × 1.3 + 0.2 = 1.63
+
+# ✅ 1.63 > 0.6 (threshold high) → Se crea alerta HIGH
+```
+
+### Filtros Temporales
+
+- **Noticias:** Últimas 24 horas
+- **Tweets:** Últimas 12 horas
+
+### Tickers Priorizados
+
+El sistema prioriza **20 tickers argentinos**:
+```
+YPF, GGAL, PAMP, ALUA, BMA, COME, CRES, EDN, 
+LOMA, MIRG, SUPV, TECO2, TGNO4, TGSU2, TRAN, 
+TXAR, VALO, CEPU, BYMA, BBAR
+```
+
+---
 
 ### Iconos Utilizados
 
