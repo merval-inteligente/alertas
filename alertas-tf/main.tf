@@ -114,7 +114,9 @@ resource "aws_instance" "alertas" {
   # SSH key pair
   key_name = var.key_name
 
-  user_data = file("${path.module}/user_data_simple.sh")
+  user_data = templatefile("${path.module}/user_data_simple.sh", {
+    mongodb_uri = var.mongodb_uri
+  })
 
   # Habilitar IP pública
   associate_public_ip_address = true

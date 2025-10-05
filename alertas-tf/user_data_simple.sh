@@ -15,9 +15,9 @@ git clone https://github.com/merval-inteligente/alertas.git .
 # Install dependencies WITH pytz
 pip3.11 install fastapi uvicorn[standard] motor pymongo python-dotenv pydantic pydantic-settings pytz
 
-# Create .env with correct MongoDB credentials
+# Create .env with MongoDB credentials from Terraform variable
 cat > .env <<'EOF'
-MONGODB_URI=mongodb+srv://admin:tRVIi8NhbKbzDj0q@cluster0.dad6cgj.mongodb.net/MervalDB?retryWrites=true&w=majority
+MONGODB_URI=${mongodb_uri}
 DATABASE_NAME=MervalDB
 EOF
 

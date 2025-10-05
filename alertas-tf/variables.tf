@@ -41,8 +41,8 @@ variable "key_name" {
 }
 
 variable "mongodb_uri" {
-  description = "MongoDB connection URI (optional, will use GitHub secrets if not provided)"
+  description = "MongoDB connection URI - REQUIRED for deployment"
   type        = string
-  default     = ""
   sensitive   = true
+  # No default value - must be provided at apply time or via tfvars file
 }

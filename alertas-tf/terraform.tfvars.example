@@ -1,0 +1,12 @@
+# Terraform Variables - Example File
+# Copy this file to terraform.tfvars and fill in your values
+# terraform.tfvars is gitignored for security
+
+# MongoDB Connection URI (REQUIRED)
+mongodb_uri = "mongodb+srv://username:password@cluster.mongodb.net/MervalDB?retryWrites=true&w=majority"
+
+# Optional: Enable SSH access for debugging
+enable_ssh = true
+
+# Optional: Custom instance type
+# instance_type = "t3.small"
