@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  alertas-api:
+    build: .
+    container_name: alertas-service
+    ports:
+      - "80:80"
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - DATABASE_NAME=${DATABASE_NAME}
+      - DB_PORT=${DB_PORT:-27017}
+    restart: unless-stopped
+    networks:
+      - alertas-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  alertas-network:
+    driver: bridge
