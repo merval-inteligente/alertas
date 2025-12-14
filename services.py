@@ -103,6 +103,7 @@ class AlertService:
     def analyze_news_for_alerts(news: News) -> List[Alert]:
         """
         Análisis mejorado de noticias con sistema de scoring
+        Genera SOLO UNA alerta por noticia (la más relevante)
         """
         alerts = []
         
@@ -115,7 +116,7 @@ class AlertService:
         money_amounts = extract_money_amounts(text_full)
         during_market = is_market_hours()
         
-        # Buscar mejores keywords por categoría
+        # Buscar LA MEJOR keyword (solo una)
         priorities = ['critical', 'high', 'medium', 'positive']
         best_match = None
         best_priority = None
@@ -132,7 +133,7 @@ class AlertService:
                     best_priority = priority
                     best_score = score
         
-        # Si encontramos un match relevante, crear alerta
+        # Crear SOLO UNA alerta con el mejor match
         if best_match and best_priority:
             symbol = tickers[0] if tickers else 'MERVAL'
             
@@ -286,6 +287,7 @@ class AlertService:
     def analyze_tweet_for_alerts(tweet: Tweet) -> List[Alert]:
         """
         Análisis mejorado de tweets con sistema de scoring
+        Genera SOLO UNA alerta por tweet (la más relevante)
         """
         alerts = []
         
@@ -307,7 +309,7 @@ class AlertService:
         percentages = extract_percentages(text)
         during_market = is_market_hours()
         
-        # Buscar mejores keywords
+        # Buscar LA MEJOR keyword (solo una)
         priorities = ['critical', 'high', 'medium', 'positive']
         best_match = None
         best_priority = None
@@ -330,7 +332,7 @@ class AlertService:
                     best_priority = priority
                     best_score = score
         
-        # Solo crear alerta si hay tickers mencionados O es muy viral
+        # Crear SOLO UNA alerta con el mejor match si es relevante
         if (len(tickers) > 0 or is_highly_viral) and best_match:
             symbol = tickers[0] if tickers else 'MERVAL'
             
@@ -344,7 +346,7 @@ class AlertService:
             else:
                 final_priority = "low"
             
-            # Solo crear alerta si es suficientemente relevante
+            # Crear UNA alerta si es suficientemente relevante
             if final_priority in ['critical', 'high'] or (final_priority == 'medium' and is_viral):
                 icon_map = {
                     'critical': 'warning',
@@ -353,7 +355,8 @@ class AlertService:
                     'low': 'trending-up'
                 }
                 
-                alerts.append(Alert(
+                # Retornar solo UNA alerta
+                return [Alert(
                     title=f"{'🔥 ' if is_highly_viral else ''}Twitter: {symbol} - {best_match.capitalize()}",
                     description=f"@{tweet.username}: {tweet.text[:100]}...",
                     alert_type="volume" if final_priority in ['critical', 'high'] else "news",
@@ -392,9 +395,9 @@ class AlertService:
                         "is_highly_viral": is_highly_viral,
                         "during_market_hours": during_market
                     }
-                ))
+                )]
         
-        return alerts
+        return []
     
     @staticmethod
     async def save_alerts(alerts: List[Alert]) -> int:
@@ -415,25 +418,39 @@ class AlertService:
             
             try:
                 if alert.source_id:
-                    # Si tiene source_id, actualizar o insertar (upsert)
+                    # Buscar alerta existente por source_id
                     existing = await alerts_collection.find_one({"sourceId": alert.source_id})
                     
                     if existing:
-                        # Actualizar la alerta existente, incrementando trigger_count
-                        alert_data["triggerCount"] = existing.get("triggerCount", 0) + 1
-                        alert_data["lastTriggered"] = datetime.utcnow()
-                        
-                        await alerts_collection.update_one(
-                            {"sourceId": alert.source_id},
-                            {"$set": alert_data}
-                        )
+                        # Si existe, actualizar solo si el contenido cambió significativamente
+                        # Comparar títulos para evitar duplicados de contenido
+                        if existing.get("title") == alert_data.get("title"):
+                            # Mismo contenido, solo actualizar timestamp y contador
+                            await alerts_collection.update_one(
+                                {"sourceId": alert.source_id},
+                                {
+                                    "$set": {
+                                        "lastTriggered": datetime.utcnow()
+                                    },
+                                    "$inc": {"triggerCount": 1}
+                                }
+                            )
+                        else:
+                            # Contenido diferente, reemplazar alerta completa
+                            alert_data["triggerCount"] = existing.get("triggerCount", 0) + 1
+                            alert_data["lastTriggered"] = datetime.utcnow()
+                            
+                            await alerts_collection.update_one(
+                                {"sourceId": alert.source_id},
+                                {"$set": alert_data}
+                            )
                     else:
-                        # Insertar nueva alerta
+                        # No existe, insertar nueva alerta
                         await alerts_collection.insert_one(alert_data)
                     
                     modified_count += 1
                 else:
-                    # Sin source_id, simplemente insertar
+                    # Sin source_id, insertar directamente
                     await alerts_collection.insert_one(alert_data)
                     modified_count += 1
                     
