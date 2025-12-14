@@ -398,25 +398,50 @@ class AlertService:
     
     @staticmethod
     async def save_alerts(alerts: List[Alert]) -> int:
-        """Guarda las alertas en la colección alerts evitando duplicados"""
+        """Guarda o actualiza las alertas en la colección alerts"""
         if not alerts:
             return 0
         
         db = await get_database()
         alerts_collection = db["alerts"]
         
-        # Convertir alertas a diccionarios
-        alerts_dict = []
+        modified_count = 0
+        
         for alert in alerts:
+            # Convertir alerta a diccionario
             alert_data = alert.model_dump(by_alias=True, exclude_none=True)
             if "_id" in alert_data:
                 del alert_data["_id"]
-            alerts_dict.append(alert_data)
+            
+            try:
+                if alert.source_id:
+                    # Si tiene source_id, actualizar o insertar (upsert)
+                    existing = await alerts_collection.find_one({"sourceId": alert.source_id})
+                    
+                    if existing:
+                        # Actualizar la alerta existente, incrementando trigger_count
+                        alert_data["triggerCount"] = existing.get("triggerCount", 0) + 1
+                        alert_data["lastTriggered"] = datetime.utcnow()
+                        
+                        await alerts_collection.update_one(
+                            {"sourceId": alert.source_id},
+                            {"$set": alert_data}
+                        )
+                    else:
+                        # Insertar nueva alerta
+                        await alerts_collection.insert_one(alert_data)
+                    
+                    modified_count += 1
+                else:
+                    # Sin source_id, simplemente insertar
+                    await alerts_collection.insert_one(alert_data)
+                    modified_count += 1
+                    
+            except Exception as e:
+                print(f"Error guardando alerta: {e}")
+                continue
         
-        # Insertar en la base de datos
-        result = await alerts_collection.insert_many(alerts_dict)
-        
-        return len(result.inserted_ids)
+        return modified_count
     
     @staticmethod
     async def get_all_alerts() -> List[Alert]:
