@@ -417,40 +417,42 @@ class AlertService:
                 del alert_data["_id"]
             
             try:
-                if alert.source_id:
-                    # Buscar alerta existente por source_id
-                    existing = await alerts_collection.find_one({"sourceId": alert.source_id})
-                    
-                    if existing:
-                        # Si existe, actualizar solo si el contenido cambió significativamente
-                        # Comparar títulos para evitar duplicados de contenido
-                        if existing.get("title") == alert_data.get("title"):
-                            # Mismo contenido, solo actualizar timestamp y contador
-                            await alerts_collection.update_one(
-                                {"sourceId": alert.source_id},
-                                {
-                                    "$set": {
-                                        "lastTriggered": datetime.utcnow()
-                                    },
-                                    "$inc": {"triggerCount": 1}
-                                }
-                            )
-                        else:
-                            # Contenido diferente, reemplazar alerta completa
-                            alert_data["triggerCount"] = existing.get("triggerCount", 0) + 1
-                            alert_data["lastTriggered"] = datetime.utcnow()
-                            
-                            await alerts_collection.update_one(
-                                {"sourceId": alert.source_id},
-                                {"$set": alert_data}
-                            )
+                # ESTRATEGIA MEJORADA: Buscar duplicados por título Y descripción
+                # Primero, buscar si existe una alerta con el mismo título
+                existing_by_title = await alerts_collection.find_one({
+                    "title": alert_data.get("title")
+                })
+                
+                if existing_by_title:
+                    # Ya existe una alerta con este título
+                    # Verificar si la descripción también coincide
+                    if existing_by_title.get("description") == alert_data.get("description"):
+                        # Mismo título Y descripción = contenido duplicado
+                        # Solo actualizar timestamp y contador
+                        await alerts_collection.update_one(
+                            {"_id": existing_by_title["_id"]},
+                            {
+                                "$set": {
+                                    "lastTriggered": datetime.utcnow()
+                                },
+                                "$inc": {"triggerCount": 1}
+                            }
+                        )
+                        # No contar como modificación significativa
+                        continue
                     else:
-                        # No existe, insertar nueva alerta
-                        await alerts_collection.insert_one(alert_data)
-                    
-                    modified_count += 1
+                        # Mismo título pero descripción diferente
+                        # Es una actualización real del contenido
+                        alert_data["triggerCount"] = existing_by_title.get("triggerCount", 0) + 1
+                        alert_data["lastTriggered"] = datetime.utcnow()
+                        
+                        await alerts_collection.update_one(
+                            {"_id": existing_by_title["_id"]},
+                            {"$set": alert_data}
+                        )
+                        modified_count += 1
                 else:
-                    # Sin source_id, insertar directamente
+                    # No existe alerta con este título, insertar nueva
                     await alerts_collection.insert_one(alert_data)
                     modified_count += 1
                     

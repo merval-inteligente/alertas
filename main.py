@@ -50,6 +50,7 @@ async def root():
             "POST /alerts/generate": "Generar alertas desde noticias y tweets (COMBINADO)",
             "POST /alerts/generate/news": "Generar alertas solo desde noticias",
             "POST /alerts/generate/tweets": "Generar alertas solo desde tweets",
+            "POST /alerts/clean-duplicates": "Limpiar alertas duplicadas",
             "DELETE /alerts": "Eliminar todas las alertas",
             "GET /health": "Estado de salud de la API"
         }
@@ -198,6 +199,83 @@ async def delete_all_alerts():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al eliminar alertas: {str(e)}")
+
+
+@app.post("/alerts/clean-duplicates")
+async def clean_duplicate_alerts():
+    """Limpia alertas duplicadas manteniendo solo la más reciente de cada grupo"""
+    try:
+        from database import get_database
+        from datetime import datetime
+        
+        db = await get_database()
+        alerts = db['alerts']
+        
+        # Buscar alertas duplicadas por título
+        pipeline = [
+            {
+                '$group': {
+                    '_id': '$title',
+                    'count': {'$sum': 1},
+                    'docs': {'$push': '$$ROOT'}
+                }
+            },
+            {
+                '$match': {'count': {'$gt': 1}}
+            }
+        ]
+        
+        duplicates = await alerts.aggregate(pipeline).to_list(None)
+        
+        total_deleted = 0
+        groups_processed = 0
+        
+        for dup_group in duplicates:
+            docs = dup_group['docs']
+            
+            # Ordenar por lastTriggered (más reciente primero)
+            docs_sorted = sorted(
+                docs,
+                key=lambda x: x.get('lastTriggered', x.get('createdAt', datetime.min)),
+                reverse=True
+            )
+            
+            # Mantener el primero (más reciente), eliminar el resto
+            keep_doc = docs_sorted[0]
+            to_delete = docs_sorted[1:]
+            
+            # Actualizar el documento que mantenemos con la suma de triggers
+            total_triggers = sum(d.get('triggerCount', 1) for d in docs_sorted)
+            
+            await alerts.update_one(
+                {'_id': keep_doc['_id']},
+                {
+                    '$set': {
+                        'triggerCount': total_triggers,
+                        'lastTriggered': datetime.utcnow()
+                    }
+                }
+            )
+            
+            # Eliminar los duplicados
+            for doc in to_delete:
+                await alerts.delete_one({'_id': doc['_id']})
+                total_deleted += 1
+            
+            groups_processed += 1
+        
+        # Estadísticas finales
+        total_after = await alerts.count_documents({})
+        
+        return {
+            "success": True,
+            "groups_processed": groups_processed,
+            "duplicates_deleted": total_deleted,
+            "total_alerts_remaining": total_after,
+            "message": f"Se procesaron {groups_processed} grupos de duplicados. Se eliminaron {total_deleted} alertas duplicadas."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al limpiar duplicados: {str(e)}")
 
 
 if __name__ == "__main__":
